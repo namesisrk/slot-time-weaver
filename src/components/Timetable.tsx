@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +18,11 @@ const Timetable = () => {
 
   // Helper function to get course name from slot (remove numbers and special chars)
   const getCourseFromSlot = (slot: string): string => {
+    // For lab slots (L followed by numbers), return the full slot as the course identifier
+    if (slot.startsWith('L') && /^\d/.test(slot.slice(1))) {
+      return slot; // Return full lab slot (e.g., "L6", "L12", "L31")
+    }
+    // For theory slots, remove numbers and special chars to get course code
     return slot.replace(/[0-9]/g, '').replace(/[^A-Z]/g, '');
   };
 
@@ -30,7 +34,11 @@ const Timetable = () => {
       row.slice(1).forEach(cell => {
         cell.split('+').forEach(slot => {
           const trimmedSlot = slot.trim();
-          if (getCourseFromSlot(trimmedSlot) === courseName) {
+          const slotCourse = getCourseFromSlot(trimmedSlot);
+          
+          // For theory courses, find all related slots
+          // For lab slots, only match the exact same lab slot
+          if (slotCourse === courseName) {
             allSlots.push(trimmedSlot);
           }
         });
@@ -78,7 +86,8 @@ const Timetable = () => {
       const selectedCourse = getCourseFromSlot(selectedSlot);
       
       // Check if courses overlap (same course name)
-      if (newSlotCourse === selectedCourse && newSlotCourse !== '') {
+      // Lab slots won't conflict with each other unless they're the exact same slot
+      if (newSlotCourse === selectedCourse && newSlotCourse !== '' && newSlot !== selectedSlot) {
         return true;
       }
     }
@@ -95,9 +104,10 @@ const Timetable = () => {
       const sameTimePeriodSlots = getSlotsInSameTimePeriod(selectedSlot);
       sameTimePeriodSlots.forEach(slot => disabledSlots.add(slot));
 
-      // Disable related course slots
+      // For theory courses, disable related course slots
+      // For lab slots, don't disable other lab slots unless they're the same lab
       const courseName = getCourseFromSlot(selectedSlot);
-      if (courseName) {
+      if (courseName && !isLabSlot(selectedSlot)) {
         const relatedSlots = findAllSlotsForCourse(courseName);
         relatedSlots.forEach(slot => {
           if (slot !== selectedSlot) {
