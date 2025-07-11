@@ -1,154 +1,72 @@
-import React, { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import html2canvas from 'html2canvas';
 
 const Timetable = () => {
   // Timetable data exactly as provided
   const timetableData = [
     ["Day/Time", "8 - 9", "9 - 10", "10 - 11", "11 - 12", "12 - 1", "1 - 1:30", "2 - 3", "3 - 4", "4 - 5", "5 - 6", "6 - 7", "7 - 7:30"],
-    ["Tue", "TEE1+L1", "A1+L2", "B1+L3", "C1+L4", "D1+L5", "L6", "E2+SE1+L31", "A2+L32", "TBB2+G2+L33", "C2+L34", "TDD2+L35", "L36"],
-    ["Wed", "TG1+L7", "D1+L8", "F1+L9", "E1+L10", "B1+L11", "L12", "E2+SC1+L37", "D2+L38", "F2+L39", "B2+L40", "TCC2+L41", "L42"],
-    ["Thu", "TF1+L13", "TC1+L14", "TD1+L15", "TA1+L16", "TFF1+CLUBS+ECS+L17", "L18", "B2+L43", "F2+L44", "TD2+L45", "TA2+L46", "TG2+L47", "L48"],
-    ["Fri", "TCC1+L19", "TB1+L20", "TAA1+G1+L21", "TE1+L22", "F1+L23", "L24", "C2+L49", "TB2+L50", "TAA2+G2+L51", "TE2+SD1+L52", "TF2+L53", "L54"],
-    ["Sat", "TDD1+L25", "C1+L26", "A1+L27", "TBB1+G1+L28", "E1+L29", "L30", "D2+L55", "TC2+L56", "A2+L57", "SF1+CLUBS+ECS+L58", "TEE2+L59", "L60"]
+    ["Tue", "TFF1+L1", "A1+L2", "B1+L3", "TC1+G1+L4", "D1+L5", "L6", "F2+L31", "A2+L32", "B2+L33", "TC2+G2+L34", "TDD2+L35", "L36"],
+    ["Wed", "TGG1+L7", "D1+L8", "F1+L9", "E1+SC2+L10", "B1+L11", "L12", "D2+L37", "TF2+G2+L38", "E2+SC1+L39", "B2+L40", "TCC2+L41", "L42"],
+    ["Thu", "TEE1+L13", "C1+L14", "TD1+TG1+L15", "TAA1+ECS+L16", "TBB1+CLUBS+L17", "L18", "TE2+SE1+L43", "C2+L44", "A2+L45", "TD2+TG2+L46", "TGG2+L47", "L48"],
+    ["Fri", "TCC1+L19", "TB1+L20", "TA1+L21", "F1+L22", "TE1+SD2+L23", "L24", "C2+L49", "TB2+L50", "TA2+L51", "F2+L52", "TEE2+L53", "L54"],
+    ["Sat", "TDD1+L25", "E1+SE2+L26", "C1+L27", "TF1+G1+L28", "A1+L29", "L30", "D2+L55", "E2+SD1+L56", "TAA2+ECS+L57", "TBB2+CLUBS+L58", "TFF2+L59", "L60"]
   ];
 
-  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [selectedSlots, setSelectedSlots] = useState<{ [key: string]: { color: string; text: string } }>({});
+  const [selectedColor, setSelectedColor] = useState<string>('blue');
+  const [colorText, setColorText] = useState<{ [key: string]: string }>({});
+  const [isDownloading, setIsDownloading] = useState(false);
+  const timetableRef = useRef<HTMLDivElement>(null);
 
-  // Helper function to get course name from slot (remove numbers and special chars)
-  const getCourseFromSlot = (slot: string): string => {
-    // For lab slots (L followed by numbers), return the full slot as the course identifier
-    if (slot.startsWith('L') && /^\d/.test(slot.slice(1))) {
-      return slot; // Return full lab slot (e.g., "L6", "L12", "L31")
-    }
-    // For theory slots, remove numbers and special chars to get course code
-    return slot.replace(/[0-9]/g, '').replace(/[^A-Z]/g, '');
-  };
-
-  // Helper function to find all slots for a specific course across all days
-  const findAllSlotsForCourse = (courseName: string): string[] => {
-    const allSlots: string[] = [];
-    
-    timetableData.slice(1).forEach(row => {
-      row.slice(1).forEach(cell => {
-        cell.split('+').forEach(slot => {
-          const trimmedSlot = slot.trim();
-          const slotCourse = getCourseFromSlot(trimmedSlot);
-          
-          // For theory courses, find all related slots
-          // For lab slots, only match the exact same lab slot
-          if (slotCourse === courseName) {
-            allSlots.push(trimmedSlot);
-          }
-        });
-      });
-    });
-    
-    return allSlots;
-  };
-
-  // Helper function to get all slots in the same time period
-  const getSlotsInSameTimePeriod = (targetSlot: string): string[] => {
-    const conflictingSlots: string[] = [];
-    let targetDayIndex = -1;
-    let targetTimeIndex = -1;
-
-    // Find the position of the target slot
-    timetableData.slice(1).forEach((row, dayIndex) => {
-      row.slice(1).forEach((cell, timeIndex) => {
-        if (cell.split('+').some(slot => slot.trim() === targetSlot)) {
-          targetDayIndex = dayIndex;
-          targetTimeIndex = timeIndex;
-        }
-      });
-    });
-
-    if (targetDayIndex !== -1 && targetTimeIndex !== -1) {
-      // Get all slots in the same time period on the same day
-      const cell = timetableData[targetDayIndex + 1][targetTimeIndex + 1];
-      cell.split('+').forEach(slot => {
-        const trimmedSlot = slot.trim();
-        if (trimmedSlot && trimmedSlot !== targetSlot) {
-          conflictingSlots.push(trimmedSlot);
-        }
-      });
-    }
-
-    return conflictingSlots;
-  };
-
-  // Check if there are overlapping courses between selected slots and a new slot
-  const hasOverlappingCourses = (newSlot: string): boolean => {
-    const newSlotCourse = getCourseFromSlot(newSlot);
-    
-    for (const selectedSlot of selectedSlots) {
-      const selectedCourse = getCourseFromSlot(selectedSlot);
-      
-      // Check if courses overlap (same course name)
-      // Lab slots won't conflict with each other unless they're the exact same slot
-      if (newSlotCourse === selectedCourse && newSlotCourse !== '' && newSlot !== selectedSlot) {
-        return true;
-      }
-    }
-    
-    return false;
-  };
-
-  // Get all slots that should be disabled based on current selection
-  const getDisabledSlots = (): string[] => {
-    const disabledSlots = new Set<string>();
-
-    selectedSlots.forEach(selectedSlot => {
-      // Disable slots in the same time period
-      const sameTimePeriodSlots = getSlotsInSameTimePeriod(selectedSlot);
-      sameTimePeriodSlots.forEach(slot => disabledSlots.add(slot));
-
-      // For theory courses, disable related course slots
-      // For lab slots, don't disable other lab slots unless they're the same lab
-      const courseName = getCourseFromSlot(selectedSlot);
-      if (courseName && !isLabSlot(selectedSlot)) {
-        const relatedSlots = findAllSlotsForCourse(courseName);
-        relatedSlots.forEach(slot => {
-          if (slot !== selectedSlot) {
-            disabledSlots.add(slot);
-          }
-        });
-      }
-    });
-
-    return Array.from(disabledSlots);
-  };
+  // Color options
+  const colorOptions = [
+    { name: 'Blue', value: 'blue', bg: 'bg-blue-500', text: 'text-white', hover: 'hover:bg-blue-600' },
+    { name: 'Red', value: 'red', bg: 'bg-red-500', text: 'text-white', hover: 'hover:bg-red-600' },
+    { name: 'Green', value: 'green', bg: 'bg-green-500', text: 'text-white', hover: 'hover:bg-green-600' },
+    { name: 'Yellow', value: 'yellow', bg: 'bg-yellow-500', text: 'text-black', hover: 'hover:bg-yellow-600' },
+    { name: 'Purple', value: 'purple', bg: 'bg-purple-500', text: 'text-white', hover: 'hover:bg-purple-600' },
+    { name: 'Orange', value: 'orange', bg: 'bg-orange-500', text: 'text-white', hover: 'hover:bg-orange-600' },
+    { name: 'Pink', value: 'pink', bg: 'bg-pink-500', text: 'text-white', hover: 'hover:bg-pink-600' },
+    { name: 'Teal', value: 'teal', bg: 'bg-teal-500', text: 'text-white', hover: 'hover:bg-teal-600' },
+    { name: 'Indigo', value: 'indigo', bg: 'bg-indigo-500', text: 'text-white', hover: 'hover:bg-indigo-600' },
+    { name: 'Gray', value: 'gray', bg: 'bg-gray-500', text: 'text-white', hover: 'hover:bg-gray-600' }
+  ];
 
   const isSlotSelected = (slotId: string): boolean => {
-    return selectedSlots.includes(slotId);
+    return slotId in selectedSlots;
   };
 
-  const isSlotDisabled = (slotId: string): boolean => {
-    if (isSlotSelected(slotId)) return false;
-    
-    const disabledSlots = getDisabledSlots();
-    
-    // Check if slot is disabled due to same time period or course conflicts
-    if (disabledSlots.includes(slotId)) return true;
-    
-    // Check for overlapping courses
-    return hasOverlappingCourses(slotId);
+  const getSlotColor = (slotId: string): string => {
+    return selectedSlots[slotId]?.color || 'blue';
+  };
+
+  const getSlotText = (slotId: string): string => {
+    return selectedSlots[slotId]?.text || '';
   };
 
   const handleSlotClick = (slotId: string) => {
-    if (isSlotDisabled(slotId)) return;
-
     if (isSlotSelected(slotId)) {
-      setSelectedSlots(prev => prev.filter(id => id !== slotId));
+      const newSelectedSlots = { ...selectedSlots };
+      delete newSelectedSlots[slotId];
+      setSelectedSlots(newSelectedSlots);
     } else {
-      setSelectedSlots(prev => [...prev, slotId]);
+      setSelectedSlots(prev => ({ 
+        ...prev, 
+        [slotId]: { 
+          color: selectedColor, 
+          text: colorText[selectedColor] || '' 
+        } 
+      }));
     }
   };
 
   const getSlotButtonVariant = (slotId: string) => {
     if (isSlotSelected(slotId)) return 'default';
-    if (isSlotDisabled(slotId)) return 'secondary';
     return 'outline';
   };
 
@@ -156,11 +74,9 @@ const Timetable = () => {
     const baseClasses = "w-full h-auto p-1 flex flex-col items-center text-center text-xs min-h-8";
     
     if (isSlotSelected(slotId)) {
-      return `${baseClasses} bg-primary text-primary-foreground hover:bg-primary/90`;
-    }
-    
-    if (isSlotDisabled(slotId)) {
-      return `${baseClasses} bg-muted text-muted-foreground cursor-not-allowed opacity-50`;
+      const color = getSlotColor(slotId);
+      const colorOption = colorOptions.find(opt => opt.value === color);
+      return `${baseClasses} ${colorOption?.bg} ${colorOption?.text} ${colorOption?.hover}`;
     }
     
     return `${baseClasses} hover:bg-accent hover:text-accent-foreground`;
@@ -177,6 +93,44 @@ const Timetable = () => {
     return 'bg-blue-100 text-blue-800';
   };
 
+  const handleColorTextChange = (color: string, text: string) => {
+    setColorText(prev => ({ ...prev, [color]: text }));
+  };
+
+  const downloadTimetableAsPNG = async () => {
+    if (!timetableRef.current) return;
+    
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(timetableRef.current, {
+        scale: 2, // Higher resolution
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: timetableRef.current.scrollWidth,
+        height: timetableRef.current.scrollHeight,
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Ensure all styles are applied in the cloned document
+          const clonedElement = clonedDoc.querySelector('[data-timetable]');
+          if (clonedElement) {
+            clonedElement.setAttribute('style', 'transform: none !important;');
+          }
+        }
+      });
+
+      const link = document.createElement('a');
+      link.download = `timetable-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Error downloading timetable:', error);
+      alert('Failed to download timetable. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-full mx-auto">
       <Card>
@@ -184,12 +138,49 @@ const Timetable = () => {
           <CardTitle className="text-2xl font-bold text-center">
             FALL SEMESTER (2024-2025) 'Slot Timetable Annexure'
           </CardTitle>
-          <div className="text-sm text-muted-foreground text-center">
-            Selected slots: {selectedSlots.length}
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">Select Color:</label>
+              <Select value={selectedColor} onValueChange={setSelectedColor}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {colorOptions.map((color) => (
+                    <SelectItem key={color.value} value={color.value}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full ${color.bg}`}></div>
+                        {color.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">Text Label:</label>
+              <Input
+                type="text"
+                placeholder="e.g., CSE1002"
+                value={colorText[selectedColor] || ''}
+                onChange={(e) => handleColorTextChange(selectedColor, e.target.value)}
+                className="w-32"
+              />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Selected slots: {Object.keys(selectedSlots).length}
+            </div>
+            <Button 
+              onClick={downloadTimetableAsPNG} 
+              disabled={isDownloading}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isDownloading ? 'Downloading...' : 'Download PNG'}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div ref={timetableRef} data-timetable className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-300">
               <thead>
                 <tr className="bg-muted">
@@ -223,10 +214,14 @@ const Timetable = () => {
                                   variant={getSlotButtonVariant(trimmedSlot)}
                                   className={getSlotButtonClassName(trimmedSlot)}
                                   onClick={() => handleSlotClick(trimmedSlot)}
-                                  disabled={isSlotDisabled(trimmedSlot)}
                                 >
-                                  <div className="flex items-center justify-between w-full">
+                                  <div className="flex flex-col items-center justify-center w-full gap-1 min-h-12">
                                     <span className="font-bold text-xs">{trimmedSlot}</span>
+                                    {isSlotSelected(trimmedSlot) && getSlotText(trimmedSlot) && (
+                                      <span className="text-xs font-medium px-1 py-0.5 bg-white/20 rounded">
+                                        {getSlotText(trimmedSlot)}
+                                      </span>
+                                    )}
                                     <Badge className={`text-xs ${getSlotTypeColor(trimmedSlot)}`}>
                                       {isLabSlot(trimmedSlot) ? 'lab' : 'theory'}
                                     </Badge>
@@ -244,18 +239,24 @@ const Timetable = () => {
             </table>
           </div>
 
-          {selectedSlots.length > 0 && (
+          {Object.keys(selectedSlots).length > 0 && (
             <Card className="bg-muted/50 mt-6">
               <CardHeader>
                 <CardTitle className="text-lg">Selected Slots</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {selectedSlots.map(slotId => (
-                    <Badge key={slotId} variant="default" className="text-sm">
-                      {slotId}
-                    </Badge>
-                  ))}
+                  {Object.entries(selectedSlots).map(([slotId, slotData]) => {
+                    const colorOption = colorOptions.find(opt => opt.value === slotData.color);
+                    return (
+                      <Badge 
+                        key={slotId} 
+                        className={`text-sm ${colorOption?.bg} ${colorOption?.text}`}
+                      >
+                        {slotId} {slotData.text && `(${slotData.text})`}
+                      </Badge>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -264,12 +265,13 @@ const Timetable = () => {
           <div className="mt-6 text-sm text-muted-foreground">
             <h4 className="font-semibold mb-2">Instructions:</h4>
             <ul className="list-disc list-inside space-y-1">
-              <li>Click on slots to select/deselect them</li>
+              <li>Select a color from the dropdown above</li>
+              <li>Enter a text label (e.g., "CSE1002") in the text input field</li>
+              <li>Click on slots to select/deselect them with the chosen color and text</li>
               <li>Theory slots are marked in blue, Lab slots in green</li>
-              <li>When you select a slot, other slots in the same time period become unselectable</li>
-              <li>Related course slots (same course code) across different days become unselectable</li>
-              <li>The system prevents overlapping course selections</li>
-              <li>Disabled slots are shown in gray and cannot be clicked</li>
+              <li>You can select any combination of slots with different colors and labels</li>
+              <li>Selected slots show both the slot name and your custom text label</li>
+              <li>Click "Download PNG" to save your timetable as a high-quality image</li>
             </ul>
           </div>
         </CardContent>
