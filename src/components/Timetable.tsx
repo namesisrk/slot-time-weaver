@@ -17,11 +17,118 @@ const Timetable = () => {
 
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
+  // Helper function to get course name from slot (remove numbers and special chars)
+  const getCourseFromSlot = (slot: string): string => {
+    return slot.replace(/[0-9]/g, '').replace(/[^A-Z]/g, '');
+  };
+
+  // Helper function to find all slots for a specific course across all days
+  const findAllSlotsForCourse = (courseName: string): string[] => {
+    const allSlots: string[] = [];
+    
+    timetableData.slice(1).forEach(row => {
+      row.slice(1).forEach(cell => {
+        cell.split('+').forEach(slot => {
+          const trimmedSlot = slot.trim();
+          if (getCourseFromSlot(trimmedSlot) === courseName) {
+            allSlots.push(trimmedSlot);
+          }
+        });
+      });
+    });
+    
+    return allSlots;
+  };
+
+  // Helper function to get all slots in the same time period
+  const getSlotsInSameTimePeriod = (targetSlot: string): string[] => {
+    const conflictingSlots: string[] = [];
+    let targetDayIndex = -1;
+    let targetTimeIndex = -1;
+
+    // Find the position of the target slot
+    timetableData.slice(1).forEach((row, dayIndex) => {
+      row.slice(1).forEach((cell, timeIndex) => {
+        if (cell.split('+').some(slot => slot.trim() === targetSlot)) {
+          targetDayIndex = dayIndex;
+          targetTimeIndex = timeIndex;
+        }
+      });
+    });
+
+    if (targetDayIndex !== -1 && targetTimeIndex !== -1) {
+      // Get all slots in the same time period on the same day
+      const cell = timetableData[targetDayIndex + 1][targetTimeIndex + 1];
+      cell.split('+').forEach(slot => {
+        const trimmedSlot = slot.trim();
+        if (trimmedSlot && trimmedSlot !== targetSlot) {
+          conflictingSlots.push(trimmedSlot);
+        }
+      });
+    }
+
+    return conflictingSlots;
+  };
+
+  // Check if there are overlapping courses between selected slots and a new slot
+  const hasOverlappingCourses = (newSlot: string): boolean => {
+    const newSlotCourse = getCourseFromSlot(newSlot);
+    
+    for (const selectedSlot of selectedSlots) {
+      const selectedCourse = getCourseFromSlot(selectedSlot);
+      
+      // Check if courses overlap (same course name)
+      if (newSlotCourse === selectedCourse && newSlotCourse !== '') {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
+  // Get all slots that should be disabled based on current selection
+  const getDisabledSlots = (): string[] => {
+    const disabledSlots = new Set<string>();
+
+    selectedSlots.forEach(selectedSlot => {
+      // Disable slots in the same time period
+      const sameTimePeriodSlots = getSlotsInSameTimePeriod(selectedSlot);
+      sameTimePeriodSlots.forEach(slot => disabledSlots.add(slot));
+
+      // Disable related course slots
+      const courseName = getCourseFromSlot(selectedSlot);
+      if (courseName) {
+        const relatedSlots = findAllSlotsForCourse(courseName);
+        relatedSlots.forEach(slot => {
+          if (slot !== selectedSlot) {
+            disabledSlots.add(slot);
+          }
+        });
+      }
+    });
+
+    return Array.from(disabledSlots);
+  };
+
   const isSlotSelected = (slotId: string): boolean => {
     return selectedSlots.includes(slotId);
   };
 
+  const isSlotDisabled = (slotId: string): boolean => {
+    if (isSlotSelected(slotId)) return false;
+    
+    const disabledSlots = getDisabledSlots();
+    
+    // Check if slot is disabled due to same time period or course conflicts
+    if (disabledSlots.includes(slotId)) return true;
+    
+    // Check for overlapping courses
+    return hasOverlappingCourses(slotId);
+  };
+
   const handleSlotClick = (slotId: string) => {
+    if (isSlotDisabled(slotId)) return;
+
     if (isSlotSelected(slotId)) {
       setSelectedSlots(prev => prev.filter(id => id !== slotId));
     } else {
@@ -30,7 +137,23 @@ const Timetable = () => {
   };
 
   const getSlotButtonVariant = (slotId: string) => {
-    return isSlotSelected(slotId) ? 'default' : 'outline';
+    if (isSlotSelected(slotId)) return 'default';
+    if (isSlotDisabled(slotId)) return 'secondary';
+    return 'outline';
+  };
+
+  const getSlotButtonClassName = (slotId: string) => {
+    const baseClasses = "w-full h-auto p-1 flex flex-col items-center text-center text-xs min-h-8";
+    
+    if (isSlotSelected(slotId)) {
+      return `${baseClasses} bg-primary text-primary-foreground hover:bg-primary/90`;
+    }
+    
+    if (isSlotDisabled(slotId)) {
+      return `${baseClasses} bg-muted text-muted-foreground cursor-not-allowed opacity-50`;
+    }
+    
+    return `${baseClasses} hover:bg-accent hover:text-accent-foreground`;
   };
 
   const isLabSlot = (slot: string) => {
@@ -88,8 +211,9 @@ const Timetable = () => {
                                 <Button
                                   key={slotIndex}
                                   variant={getSlotButtonVariant(trimmedSlot)}
-                                  className="w-full h-auto p-1 flex flex-col items-center text-center text-xs min-h-8"
+                                  className={getSlotButtonClassName(trimmedSlot)}
                                   onClick={() => handleSlotClick(trimmedSlot)}
+                                  disabled={isSlotDisabled(trimmedSlot)}
                                 >
                                   <div className="flex items-center justify-between w-full">
                                     <span className="font-bold text-xs">{trimmedSlot}</span>
@@ -132,8 +256,10 @@ const Timetable = () => {
             <ul className="list-disc list-inside space-y-1">
               <li>Click on slots to select/deselect them</li>
               <li>Theory slots are marked in blue, Lab slots in green</li>
-              <li>Multiple slots in the same time period are shown stacked</li>
-              <li>Selected slots are highlighted and shown in the summary below</li>
+              <li>When you select a slot, other slots in the same time period become unselectable</li>
+              <li>Related course slots (same course code) across different days become unselectable</li>
+              <li>The system prevents overlapping course selections</li>
+              <li>Disabled slots are shown in gray and cannot be clicked</li>
             </ul>
           </div>
         </CardContent>
